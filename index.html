@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Claude Minecraft — 서바이벌</title>
+  <link rel="stylesheet" href="./styles.css" />
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "./vendor/three.module.js"
+      }
+    }
+  </script>
+</head>
+<body>
+  <canvas id="game"></canvas>
+
+  <!-- crosshair -->
+  <div id="crosshair">+</div>
+
+  <!-- break progress -->
+  <div id="breakbar"><div id="breakfill"></div></div>
+
+  <!-- top-right clock -->
+  <div id="clock">06:00 ☀</div>
+
+  <!-- toast -->
+  <div id="toast"></div>
+
+  <!-- HUD bars -->
+  <div id="hud">
+    <div class="bars">
+      <div id="air" class="bar"></div>
+    </div>
+    <div class="bars">
+      <div id="health" class="bar"></div>
+      <div id="hunger" class="bar right"></div>
+    </div>
+    <div id="hotbar"></div>
+  </div>
+
+  <!-- inventory overlay -->
+  <div id="inventory">
+    <div class="invpanel">
+      <h2>인벤토리 — 블록 50종</h2>
+      <p class="hint">블록을 클릭하면 선택된 핫바 슬롯(<span id="selnote">1~9 / 스크롤</span>)에 들어갑니다. <b>E</b> 키로 닫기.</p>
+      <div id="invgrid"></div>
+    </div>
+  </div>
+
+  <!-- death screen -->
+  <div id="death">
+    <div class="deathpanel">
+      <h1>💀 사망</h1>
+      <p>체력이 모두 소진되었습니다.</p>
+      <button id="respawn">다시 시작</button>
+    </div>
+  </div>
+
+  <!-- start / help -->
+  <div id="help">
+    <div class="helppanel">
+      <h1>⛏️ Claude Minecraft</h1>
+      <p>서바이벌 모드 · 50종 블록</p>
+      <ul>
+        <li><b>WASD</b> 이동 · <b>Space</b> 점프/수영 · <b>Shift</b> 달리기</li>
+        <li><b>마우스</b> 시점 · <b>좌클릭</b> 채굴 · <b>우클릭</b> 설치</li>
+        <li><b>1~9 / 스크롤</b> 핫바 선택 · <b>E</b> 인벤토리</li>
+        <li><b>F</b> 비행 토글 · <b>R</b> 음식 먹기(호박/멜론/버섯)</li>
+      </ul>
+      <p class="warn">체력·허기·산소·낙하 데미지가 있는 서바이벌입니다.</p>
+      <button id="startbtn">게임 시작 (클릭하여 마우스 잠금)</button>
+    </div>
+  </div>
+
+  <script type="module" src="./src/main.js"></script>
+  <script>
+    // start overlay: hide on click; main.js handles pointer lock on canvas click
+    document.getElementById('startbtn').addEventListener('click', () => {
+      document.getElementById('help').style.display = 'none';
+      document.getElementById('game').requestPointerLock();
+    });
+  </script>
+</body>
+</html>
