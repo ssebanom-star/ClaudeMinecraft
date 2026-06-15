@@ -1,7 +1,14 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
-body { font-family: 'Segoe UI', system-ui, sans-serif; user-select: none; }
-canvas#game { display: block; width: 100vw; height: 100vh; cursor: crosshair; }
+body {
+  font-family: 'Segoe UI', system-ui, sans-serif; user-select: none;
+  -webkit-user-select: none; -webkit-touch-callout: none;
+  touch-action: none; overscroll-behavior: none;
+}
+canvas#game {
+  display: block; position: fixed; inset: 0; width: 100%; height: 100%;
+  cursor: crosshair; touch-action: none;
+}
 
 /* crosshair */
 #crosshair {
@@ -112,3 +119,64 @@ canvas#game { display: block; width: 100vw; height: 100vh; cursor: crosshair; }
 .helppanel > p { color: #9fd07a; margin-bottom: 16px; }
 .helppanel ul { text-align: left; margin: 0 auto 14px; max-width: 380px; line-height: 1.9; font-size: 14px; }
 .helppanel .warn { color: #e0a44b; font-size: 13px; }
+
+/* ---- show/hide instructions by input type ---- */
+.touch-only { display: none; }
+body.touch .desktop-only { display: none; }
+body.touch .touch-only { display: block; }
+body.touch #crosshair { mix-blend-mode: normal; color: rgba(255,255,255,0.85); }
+
+/* ---- mobile touch controls ---- */
+#touch-controls { position: fixed; inset: 0; z-index: 8; pointer-events: none; }
+#touch-controls .tbtn, #touch-controls #joy { pointer-events: auto; }
+
+#joy {
+  position: fixed; left: 18px; bottom: 96px;
+  width: 130px; height: 130px; border-radius: 50%;
+  background: rgba(255,255,255,0.12); border: 2px solid rgba(255,255,255,0.35);
+  display: flex; align-items: center; justify-content: center;
+  touch-action: none;
+}
+#joy-knob {
+  width: 56px; height: 56px; border-radius: 50%;
+  background: rgba(255,255,255,0.45); border: 2px solid rgba(255,255,255,0.7);
+  will-change: transform;
+}
+
+#act {
+  position: fixed; right: 18px; bottom: 92px; width: 190px; height: 190px;
+}
+#side {
+  position: fixed; right: 18px; top: 50%; transform: translateY(-60%);
+  display: flex; flex-direction: column; gap: 10px;
+}
+
+.tbtn {
+  -webkit-appearance: none; appearance: none; font-family: inherit;
+  background: rgba(255,255,255,0.16); color: #fff;
+  border: 2px solid rgba(255,255,255,0.4); border-radius: 50%;
+  width: 56px; height: 56px; font-size: 22px; line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+  touch-action: none; user-select: none;
+}
+.tbtn.down { background: rgba(255,255,255,0.45); }
+.tbtn.big { position: absolute; width: 74px; height: 74px; font-size: 30px; }
+.tbtn.mine  { left: 0;   bottom: 8px;  background: rgba(220,90,70,0.30); border-color: rgba(255,150,130,0.6); }
+.tbtn.place { right: 0;  bottom: 8px;  background: rgba(90,150,220,0.30); border-color: rgba(150,190,255,0.6); }
+.tbtn.jump  { left: 50%; top: 0; transform: translateX(-50%); background: rgba(120,200,120,0.30); border-color: rgba(170,255,170,0.6); }
+.tbtn.jump.down { transform: translateX(-50%); }
+
+/* responsive: shrink HUD/hotbar on small screens */
+@media (max-width: 560px) {
+  .bars { width: 96vw; max-width: 360px; }
+  .icon { width: 15px; height: 15px; }
+  #hotbar { gap: 2px; padding: 3px; }
+  .slot { width: 38px; height: 38px; }
+  .slot img { width: 30px; height: 30px; }
+  .slot .num { font-size: 8px; }
+  #invgrid { grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 6px; }
+  .invcell img { width: 32px; height: 32px; }
+  .invcell span { font-size: 9px; }
+  .helppanel { padding: 20px; }
+  .helppanel h1 { font-size: 24px; }
+}

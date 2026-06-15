@@ -2,7 +2,10 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="theme-color" content="#20242e" />
   <title>Claude Minecraft — 서바이벌</title>
   <link rel="stylesheet" href="./styles.css" />
   <script type="importmap">
@@ -63,23 +66,35 @@
     <div class="helppanel">
       <h1>⛏️ Claude Minecraft</h1>
       <p>서바이벌 모드 · 50종 블록</p>
-      <ul>
+      <ul class="desktop-only">
         <li><b>WASD</b> 이동 · <b>Space</b> 점프/수영 · <b>Shift</b> 달리기</li>
         <li><b>마우스</b> 시점 · <b>좌클릭</b> 채굴 · <b>우클릭</b> 설치</li>
         <li><b>1~9 / 스크롤</b> 핫바 선택 · <b>E</b> 인벤토리</li>
         <li><b>F</b> 비행 토글 · <b>R</b> 음식 먹기(호박/멜론/버섯)</li>
       </ul>
+      <ul class="touch-only">
+        <li><b>왼쪽 조이스틱</b> 이동 · <b>화면 드래그</b> 시점</li>
+        <li><b>⛏</b> 채굴(길게) · <b>▦</b> 설치 · <b>⤒</b> 점프</li>
+        <li><b>🎒</b> 인벤토리 · <b>✈</b> 비행 · <b>⬇</b> 하강 · <b>🍖</b> 먹기</li>
+        <li>핫바를 탭하면 슬롯 선택</li>
+      </ul>
       <p class="warn">체력·허기·산소·낙하 데미지가 있는 서바이벌입니다.</p>
-      <button id="startbtn">게임 시작 (클릭하여 마우스 잠금)</button>
+      <button id="startbtn">게임 시작</button>
     </div>
   </div>
 
   <script type="module" src="./src/main.js"></script>
   <script>
-    // start overlay: hide on click; main.js handles pointer lock on canvas click
+    // start overlay: hide on click. Desktop uses pointer lock; touch devices
+    // use the on-screen controls (set up in main.js), so no pointer lock there.
     document.getElementById('startbtn').addEventListener('click', () => {
       document.getElementById('help').style.display = 'none';
-      document.getElementById('game').requestPointerLock();
+      const coarse =
+        (window.matchMedia && matchMedia('(pointer: coarse)').matches) ||
+        'ontouchstart' in window || navigator.maxTouchPoints > 0;
+      if (!coarse) {
+        try { document.getElementById('game').requestPointerLock(); } catch (e) {}
+      }
     });
   </script>
 </body>

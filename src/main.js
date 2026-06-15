@@ -7,11 +7,18 @@ import { Player } from './player.js';
 import { Survival } from './survival.js';
 import { BLOCKS, blockDef, isLiquid } from './blocks.js';
 
-const RENDER_RADIUS = 5;
+// Detect touch / mobile devices to enable on-screen controls and lighter settings.
+const IS_TOUCH =
+  (typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches) ||
+  'ontouchstart' in window ||
+  navigator.maxTouchPoints > 0;
+
+// Smaller view distance & pixel ratio on mobile for smoother framerate.
+const RENDER_RADIUS = IS_TOUCH ? 3 : 5;
 
 const canvas = document.getElementById('game');
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: false });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, IS_TOUCH ? 1.0 : 1.5));
 renderer.setSize(window.innerWidth, window.innerHeight);
 
 const scene = new THREE.Scene();
@@ -32,6 +39,7 @@ const spawnY = world.surfaceY(0, 0);
 
 const player = new Player(camera, world, canvas);
 player.pos.set(0.5, spawnY + 1, 0.5);
+player.touchMode = IS_TOUCH;
 
 // ---- block highlight ----
 const highlightGeo = new THREE.BoxGeometry(1.002, 1.002, 1.002);
@@ -350,11 +358,121 @@ window.addEventListener('resize', () => {
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
+// ---- mobile touch controls ----
+function setupTouchControls() {
+  if (!IS_TOUCH) return;
+  document.body.classList.add('touch');
+
+  const root = document.createElement('div');
+  root.id = 'touch-controls';
+  root.innerHTML = `
+    <div id="joy"><div id="joy-knob"></div></div>
+    <div id="act">
+      <button class="tbtn big jump" id="t-jump" aria-label="jump">⤒</button>
+      <button class="tbtn big mine" id="t-mine" aria-label="mine">⛏</button>
+      <button class="tbtn big place" id="t-place" aria-label="place">▦</button>
+    </div>
+    <div id="side">
+      <button class="tbtn" id="t-inv" aria-label="inventory">🎒</button>
+      <button class="tbtn" id="t-fly" aria-label="fly">✈</button>
+      <button class="tbtn" id="t-down" aria-label="down">⬇</button>
+      <button class="tbtn" id="t-eat" aria-label="eat">🍖</button>
+    </div>`;
+  document.body.appendChild(root);
+
+  // virtual joystick
+  const joy = document.getElementById('joy');
+  const knob = document.getElementById('joy-knob');
+  const R = 48;
+  let joyId = null;
+  const joyMove = (e) => {
+    for (const t of e.changedTouches) {
+      if (t.identifier !== joyId) continue;
+      const rect = joy.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      let dx = t.clientX - cx;
+      let dy = t.clientY - cy;
+      const d = Math.hypot(dx, dy) || 1;
+      if (d > R) { dx = (dx / d) * R; dy = (dy / d) * R; }
+      knob.style.transform = `translate(${dx}px, ${dy}px)`;
+      player.joyStr = dx / R;
+      player.joyFwd = -dy / R;
+      e.preventDefault();
+    }
+  };
+  const joyEnd = (e) => {
+    for (const t of e.changedTouches) {
+      if (t.identifier !== joyId) continue;
+      joyId = null;
+      player.joyFwd = 0;
+      player.joyStr = 0;
+      knob.style.transform = 'translate(0,0)';
+    }
+  };
+  joy.addEventListener('touchstart', (e) => {
+    joyId = e.changedTouches[0].identifier;
+    joyMove(e);
+    e.preventDefault();
+  }, { passive: false });
+  joy.addEventListener('touchmove', joyMove, { passive: false });
+  joy.addEventListener('touchend', joyEnd);
+  joy.addEventListener('touchcancel', joyEnd);
+
+  // look: drag anywhere on the canvas
+  let lookId = null, lastX = 0, lastY = 0;
+  canvas.addEventListener('touchstart', (e) => {
+    if (inventoryOpen || survival.dead) return;
+    if (lookId === null) {
+      const t = e.changedTouches[0];
+      lookId = t.identifier;
+      lastX = t.clientX;
+      lastY = t.clientY;
+    }
+    e.preventDefault();
+  }, { passive: false });
+  canvas.addEventListener('touchmove', (e) => {
+    for (const t of e.changedTouches) {
+      if (t.identifier !== lookId) continue;
+      player.addLook(t.clientX - lastX, t.clientY - lastY);
+      lastX = t.clientX;
+      lastY = t.clientY;
+      e.preventDefault();
+    }
+  }, { passive: false });
+  const lookEnd = (e) => {
+    for (const t of e.changedTouches) if (t.identifier === lookId) lookId = null;
+  };
+  canvas.addEventListener('touchend', lookEnd);
+  canvas.addEventListener('touchcancel', lookEnd);
+
+  // action buttons
+  const hold = (id, on, off) => {
+    const el = document.getElementById(id);
+    el.addEventListener('touchstart', (e) => { on(); el.classList.add('down'); e.preventDefault(); }, { passive: false });
+    const end = (e) => { off && off(); el.classList.remove('down'); if (e && e.preventDefault) e.preventDefault(); };
+    el.addEventListener('touchend', end);
+    el.addEventListener('touchcancel', end);
+  };
+  const tap = (id, fn) => {
+    document.getElementById(id).addEventListener('touchstart', (e) => { fn(); e.preventDefault(); }, { passive: false });
+  };
+
+  hold('t-jump', () => { player.keys['Space'] = true; }, () => { player.keys['Space'] = false; });
+  hold('t-mine', () => { mining = true; }, () => { mining = false; breakProgress = 0; breakTarget = null; });
+  hold('t-place', () => { placing = true; }, () => { placing = false; });
+  hold('t-down', () => { player.keys['ControlLeft'] = true; }, () => { player.keys['ControlLeft'] = false; });
+  tap('t-fly', () => { player.flying = !player.flying; toast(player.flying ? '비행 ON' : '비행 OFF'); });
+  tap('t-eat', () => { if (survival.eatSelected()) { toast('냠냠!'); renderHUD(); } });
+  tap('t-inv', () => { toggleInventory(); });
+}
+
 // init UI
 renderHotbar();
 buildInventory();
 renderHUD();
 toggleInventory(false);
+setupTouchControls();
 requestAnimationFrame(loop);
 
 // expose for debugging

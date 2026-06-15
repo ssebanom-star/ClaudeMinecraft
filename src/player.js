@@ -28,12 +28,18 @@ export class Player {
     this.sprintMul = 1.6;
     this.sprinting = false;
 
+    // touch / mobile input
+    this.touchMode = false;     // set true on touch devices to skip pointer lock
+    this.joyFwd = 0;            // analog forward (-1..1) from virtual joystick
+    this.joyStr = 0;            // analog strafe  (-1..1)
+
     this._bindInput();
   }
 
   _bindInput() {
     const canvas = this.dom;
     canvas.addEventListener('click', () => {
+      if (this.touchMode) return; // touch devices use drag-to-look, no pointer lock
       if (!document.pointerLockElement) canvas.requestPointerLock();
     });
     document.addEventListener('mousemove', (e) => {
@@ -57,6 +63,15 @@ export class Player {
 
   get locked() {
     return document.pointerLockElement === this.dom;
+  }
+
+  // Apply look rotation from a touch/drag delta (pixels).
+  addLook(dx, dy) {
+    const s = 0.004;
+    this.yaw -= dx * s;
+    this.pitch -= dy * s;
+    const lim = Math.PI / 2 - 0.01;
+    this.pitch = Math.max(-lim, Math.min(lim, this.pitch));
   }
 
   // ---- collision helpers ----
@@ -87,6 +102,9 @@ export class Player {
     if (this.keys['KeyS']) fwd -= 1;
     if (this.keys['KeyA']) str -= 1;
     if (this.keys['KeyD']) str += 1;
+    // analog joystick (mobile)
+    fwd += this.joyFwd;
+    str += this.joyStr;
 
     const sin = Math.sin(this.yaw), cos = Math.cos(this.yaw);
     let mx = (str * cos - fwd * sin);
