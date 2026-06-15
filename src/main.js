@@ -384,20 +384,28 @@ function setupTouchControls() {
   const joy = document.getElementById('joy');
   const knob = document.getElementById('joy-knob');
   const R = 48;
+  const DEAD = 0.15; // ignore tiny drift near center
   let joyId = null;
+  let joyCx = 0, joyCy = 0;
   const joyMove = (e) => {
     for (const t of e.changedTouches) {
       if (t.identifier !== joyId) continue;
-      const rect = joy.getBoundingClientRect();
-      const cx = rect.left + rect.width / 2;
-      const cy = rect.top + rect.height / 2;
-      let dx = t.clientX - cx;
-      let dy = t.clientY - cy;
-      const d = Math.hypot(dx, dy) || 1;
+      let dx = t.clientX - joyCx;
+      let dy = t.clientY - joyCy;
+      const d = Math.hypot(dx, dy);
       if (d > R) { dx = (dx / d) * R; dy = (dy / d) * R; }
       knob.style.transform = `translate(${dx}px, ${dy}px)`;
-      player.joyStr = dx / R;
-      player.joyFwd = -dy / R;
+      // analog magnitude with dead zone, rescaled to 0..1
+      let nx = dx / R, ny = dy / R;
+      const mag = Math.hypot(nx, ny);
+      if (mag < DEAD) {
+        nx = 0; ny = 0;
+      } else {
+        const scale = (mag - DEAD) / (1 - DEAD) / mag;
+        nx *= scale; ny *= scale;
+      }
+      player.joyStr = nx;
+      player.joyFwd = -ny;
       e.preventDefault();
     }
   };
@@ -412,6 +420,9 @@ function setupTouchControls() {
   };
   joy.addEventListener('touchstart', (e) => {
     joyId = e.changedTouches[0].identifier;
+    const rect = joy.getBoundingClientRect();
+    joyCx = rect.left + rect.width / 2;
+    joyCy = rect.top + rect.height / 2;
     joyMove(e);
     e.preventDefault();
   }, { passive: false });

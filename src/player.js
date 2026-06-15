@@ -110,7 +110,7 @@ export class Player {
     let mx = (str * cos - fwd * sin);
     let mz = (str * sin + fwd * cos);
     const len = Math.hypot(mx, mz);
-    if (len > 0) { mx /= len; mz /= len; }
+    if (len > 1) { mx /= len; mz /= len; }
 
     let speed = this.speed * (this.sprinting && fwd > 0 ? this.sprintMul : 1);
 
