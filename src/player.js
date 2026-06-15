@@ -106,9 +106,11 @@ export class Player {
     fwd += this.joyFwd;
     str += this.joyStr;
 
+    // Movement is relative to where the camera looks. Forward matches the
+    // horizontal look direction (sin, cos); right (strafe) is that turned 90°.
     const sin = Math.sin(this.yaw), cos = Math.cos(this.yaw);
-    let mx = (str * cos - fwd * sin);
-    let mz = (str * sin + fwd * cos);
+    let mx = fwd * sin + str * cos;
+    let mz = fwd * cos - str * sin;
     const len = Math.hypot(mx, mz);
     if (len > 1) { mx /= len; mz /= len; }
 
