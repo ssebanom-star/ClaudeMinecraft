@@ -60,6 +60,10 @@ canvas#game {
 
 .bubble { background: radial-gradient(circle at 35% 35%, #cdeaff, #4a90d9); border-radius: 50%; }
 
+.armor.full { background: linear-gradient(135deg,#e8e8e8,#9aa0aa); clip-path: polygon(50% 0,100% 20%,100% 55%,50% 100%,0 55%,0 20%); }
+.armor.half { background: linear-gradient(90deg,#9aa0aa 50%,#444 50%); clip-path: polygon(50% 0,100% 20%,100% 55%,50% 100%,0 55%,0 20%); }
+.armor.empty { background: #444; clip-path: polygon(50% 0,100% 20%,100% 55%,50% 100%,0 55%,0 20%); }
+
 /* hotbar */
 #hotbar { display: flex; gap: 3px; padding: 4px; background: rgba(0,0,0,0.4); border-radius: 6px; }
 .slot {
@@ -110,6 +114,32 @@ canvas#game {
   position: absolute; bottom: 0; right: 3px; font-size: 11px; font-weight: bold;
   color: #fff; text-shadow: 1px 1px 0 #000; pointer-events: none;
 }
+.islot.lit { box-shadow: 0 0 6px 1px rgba(255,170,60,0.8); }
+
+.invtop { display: flex; gap: 24px; flex-wrap: wrap; align-items: flex-start; }
+.armorrow { grid-template-columns: repeat(4, 46px); }
+
+.recipes { margin-top: 14px; font-size: 12px; color: #bbb; }
+.recipes summary { cursor: pointer; color: #9fd07a; font-size: 13px; }
+.recipes ul { margin: 8px 0 0 18px; line-height: 1.7; }
+
+/* furnace overlay */
+#furnace {
+  position: fixed; inset: 0; z-index: 10; display: none;
+  align-items: center; justify-content: center; background: rgba(0,0,0,0.55);
+}
+#furnaceclose {
+  width: 32px; height: 32px; font-size: 16px; cursor: pointer;
+  background: #5a8a3a; color: #fff; border: 2px solid #2c4a1c; border-radius: 6px;
+}
+#furnaceclose:hover { background: #6aa047; }
+.furnacearea { display: flex; align-items: center; gap: 18px; margin: 10px 0; }
+.furncol { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.furnflame { font-size: 20px; filter: grayscale(1) opacity(0.3); transition: filter 0.2s; }
+.furnflame.on { filter: none; }
+.furnmid { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.furnbar { width: 56px; height: 8px; background: rgba(0,0,0,0.5); border-radius: 3px; overflow: hidden; }
+#furnbarfill { height: 100%; width: 0%; background: linear-gradient(90deg,#9fd07a,#5a8a3a); }
 
 /* death */
 #death {

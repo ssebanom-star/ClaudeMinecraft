@@ -1,6 +1,7 @@
 // Survival state: health, hunger, oxygen, regeneration, fall/drown damage,
-// plus a hotbar + backpack inventory and a 2x2 crafting grid.
+// plus a hotbar + backpack inventory, armor slots and a 2x2 crafting grid.
 import { blockDef } from './blocks.js';
+import { itemDef, isItem, ITEM } from './items.js';
 
 export class Survival {
   constructor() {
@@ -25,14 +26,59 @@ export class Survival {
     this.inventory = new Array(18).fill(null);
     // 2x2 crafting input grid; output is derived via matchRecipe(), not stored
     this.craftGrid = new Array(4).fill(null);
+    // worn armor: [head, chest, legs, feet]; each {id,count:1} or null
+    this.armorSlots = new Array(4).fill(null);
 
     this._fillStarter();
   }
 
   _fillStarter() {
-    // grass, dirt, stone, cobblestone, oak log, oak planks, glass, torch-like glowstone, leaves
-    const starter = [1, 2, 3, 4, 14, 15, 33, 47, 16];
-    starter.forEach((id, i) => (this.hotbar[i] = { id, count: 64 }));
+    // hotbar: a few building blocks plus a sword, flint & steel and TNT
+    const hb = [
+      { id: 1, count: 64 },   // grass
+      { id: 3, count: 64 },   // stone
+      { id: 14, count: 16 },  // oak log
+      { id: 15, count: 32 },  // oak planks
+      { id: 33, count: 16 },  // glass
+      { id: 39, count: 8 },   // TNT
+      { id: ITEM.IronSword, count: 1 },
+      { id: ITEM.FlintAndSteel, count: 1 },
+      { id: 47, count: 16 },  // glowstone (light)
+    ];
+    hb.forEach((s, i) => (this.hotbar[i] = s));
+    // backpack: smelting + crafting materials to try everything out
+    const inv = [
+      { id: 22, count: 16 },  // iron ore (smelt -> ingot)
+      { id: 257, count: 8 },  // coal (fuel)
+      { id: 5, count: 16 },   // sand (smelt -> glass)
+      { id: 4, count: 32 },   // cobblestone
+      { id: ITEM.Stick, count: 8 },
+      { id: ITEM.Flint, count: 4 },
+      { id: ITEM.IronIngot, count: 12 },
+      { id: 40, count: 4 },   // pumpkin (food)
+    ];
+    inv.forEach((s, i) => (this.inventory[i] = s));
+  }
+
+  // total armor points from worn pieces (0..~15)
+  armorPoints() {
+    let pts = 0;
+    for (const s of this.armorSlots) {
+      if (!s) continue;
+      const d = itemDef(s.id);
+      if (d && d.armor) pts += d.armor;
+    }
+    return pts;
+  }
+
+  // melee damage of the currently held item (fist = 1)
+  attackDamage() {
+    const s = this.hotbar[this.selected];
+    if (s && isItem(s.id)) {
+      const d = itemDef(s.id);
+      if (d && d.attack) return d.attack;
+    }
+    return 1;
   }
 
   selectedId() {
@@ -103,6 +149,13 @@ export class Survival {
     if (this.dead) return;
     this.health = Math.max(0, this.health - amount);
     if (this.health <= 0) this.dead = true;
+  }
+
+  // Combat / explosion damage, reduced by worn armor (min 1 if any got through).
+  hurt(amount) {
+    if (this.dead || amount <= 0) return;
+    const reduced = amount * (1 - Math.min(20, this.armorPoints()) / 25);
+    this.damage(Math.max(1, Math.round(reduced)));
   }
 
   heal(amount) {

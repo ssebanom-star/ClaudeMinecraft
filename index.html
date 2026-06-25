@@ -34,7 +34,8 @@
   <!-- HUD bars -->
   <div id="hud">
     <div class="bars">
-      <div id="air" class="bar"></div>
+      <div id="armor" class="bar"></div>
+      <div id="air" class="bar right"></div>
     </div>
     <div class="bars">
       <div id="health" class="bar"></div>
@@ -52,11 +53,19 @@
       </div>
       <p class="hint">슬롯을 탭해 선택하고, 다른 슬롯을 탭하면 이동/교체됩니다. <b>E</b> 키 또는 ✕ 로 닫기.</p>
 
-      <h3>조합 (2×2)</h3>
-      <div class="craftarea">
-        <div id="craftgrid" class="invslots craftgrid"></div>
-        <div class="craftarrow">→</div>
-        <div id="craftout" class="islot empty"></div>
+      <div class="invtop">
+        <div>
+          <h3>방어구</h3>
+          <div id="armorslots" class="invslots armorrow"></div>
+        </div>
+        <div>
+          <h3>조합 (2×2)</h3>
+          <div class="craftarea">
+            <div id="craftgrid" class="invslots craftgrid"></div>
+            <div class="craftarrow">→</div>
+            <div id="craftout" class="islot empty"></div>
+          </div>
+        </div>
       </div>
 
       <h3>보관함</h3>
@@ -64,6 +73,46 @@
 
       <h3>핫바</h3>
       <div id="invhotbar" class="invslots"></div>
+
+      <details class="recipes">
+        <summary>제작 · 제련 도움말</summary>
+        <ul>
+          <li>막대기 = 나무판자 2 · 작업대 = 나무판자 4</li>
+          <li>나무/돌/철 검 = (판자2/조약돌2/철주괴2) + 막대기 1</li>
+          <li>부싯돌과 부시 = 철 주괴 1 + 부싯돌 1</li>
+          <li>철 투구/흉갑/각반/부츠 = 철 주괴 5 / 8 / 7 / 4</li>
+          <li>제련(화로): 철광석→철 주괴, 금광석→금 주괴, 모래→유리, 조약돌→돌 (연료: 석탄/나무)</li>
+          <li>부싯돌과 부시로 TNT를 터뜨릴 수 있습니다 💥</li>
+        </ul>
+      </details>
+    </div>
+  </div>
+
+  <!-- furnace overlay -->
+  <div id="furnace">
+    <div class="invpanel">
+      <div class="invhead">
+        <h2>화로</h2>
+        <button id="furnaceclose" aria-label="닫기">✕</button>
+      </div>
+      <div class="furnacearea">
+        <div class="furncol">
+          <div id="furn-input" class="islot empty"></div>
+          <div id="furnflame" class="furnflame">🔥</div>
+          <div id="furn-fuel" class="islot empty"></div>
+        </div>
+        <div class="furnmid">
+          <div class="craftarrow">→</div>
+          <div class="furnbar"><div id="furnbarfill"></div></div>
+        </div>
+        <div id="furn-output" class="islot empty"></div>
+      </div>
+      <p class="hint">위: 제련할 블록 · 아래: 연료(석탄/나무) · 오른쪽: 결과물 (탭해서 가져가기)</p>
+
+      <h3>보관함</h3>
+      <div id="furn-invgrid" class="invslots"></div>
+      <h3>핫바</h3>
+      <div id="furn-hotbar" class="invslots"></div>
     </div>
   </div>
 
@@ -83,17 +132,17 @@
       <p>서바이벌 모드 · 50종 블록</p>
       <ul class="desktop-only">
         <li><b>WASD</b> 이동 · <b>Space</b> 점프/수영 · <b>Shift</b> 달리기</li>
-        <li><b>마우스</b> 시점 · <b>좌클릭</b> 채굴 · <b>우클릭</b> 설치</li>
-        <li><b>1~9 / 스크롤</b> 핫바 선택 · <b>E</b> 인벤토리</li>
-        <li><b>F</b> 비행 토글 · <b>R</b> 음식 먹기(호박/멜론/버섯)</li>
+        <li><b>마우스</b> 시점 · <b>좌클릭</b> 채굴/공격 · <b>우클릭</b> 설치/사용</li>
+        <li><b>1~9 / 스크롤</b> 핫바 선택 · <b>E</b> 인벤토리 · 화로 우클릭 제련</li>
+        <li><b>F</b> 비행 · <b>R</b> 먹기 · 검으로 좀비 처치, 갑옷 장착</li>
       </ul>
       <ul class="touch-only">
         <li><b>왼쪽 조이스틱</b> 이동 · <b>화면 드래그</b> 시점</li>
-        <li><b>화면 짧게 탭</b> 설치 · <b>꾹 누르기</b> 채굴 · <b>⤒</b> 점프</li>
-        <li><b>🎒</b> 인벤토리(조합) · <b>✈</b> 비행 · <b>⬇</b> 하강 · <b>🍖</b> 먹기</li>
-        <li>핫바를 탭하면 슬롯 선택</li>
+        <li><b>화면 짧게 탭</b> 설치/공격/사용 · <b>꾹 누르기</b> 채굴 · <b>⤒</b> 점프</li>
+        <li><b>🎒</b> 인벤토리(조합/방어구) · <b>✈</b> 비행 · <b>⬇</b> 하강 · <b>🍖</b> 먹기</li>
+        <li>화로를 탭하면 제련 · 핫바를 탭하면 슬롯 선택</li>
       </ul>
-      <p class="warn">체력·허기·산소·낙하 데미지가 있는 서바이벌입니다.</p>
+      <p class="warn">밤에는 좀비가 나타납니다. 검·갑옷을 만들어 살아남으세요!</p>
       <button id="startbtn">게임 시작</button>
     </div>
   </div>

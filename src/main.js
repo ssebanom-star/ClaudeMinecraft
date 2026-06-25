@@ -1,12 +1,16 @@
-// Game bootstrap: scene, render loop, mining/placing, survival HUD,
-// day/night cycle, inventory UI.
+// Game bootstrap: scene, render loop, mining/placing/combat, survival HUD,
+// day/night cycle, inventory + crafting + armor, furnace smelting, zombies,
+// and flint & steel / TNT explosions.
 import * as THREE from 'three';
 import { buildAtlas } from './textures.js';
 import { World, CHUNK } from './world.js';
 import { Player } from './player.js';
 import { Survival } from './survival.js';
-import { blockDef, isLiquid } from './blocks.js';
+import { blockDef, isLiquid, ID } from './blocks.js';
 import { matchRecipe } from './recipes.js';
+import { isItem, itemDef, itemIcon, armorSlotOf, ITEM } from './items.js';
+import { MobManager } from './mobs.js';
+import { FurnaceState, COOK_TIME } from './furnace.js';
 
 // Detect touch / mobile devices to enable on-screen controls and lighter settings.
 const IS_TOUCH =
@@ -14,7 +18,6 @@ const IS_TOUCH =
   'ontouchstart' in window ||
   navigator.maxTouchPoints > 0;
 
-// Smaller view distance & pixel ratio on mobile for smoother framerate.
 const RENDER_RADIUS = IS_TOUCH ? 3 : 5;
 
 const canvas = document.getElementById('game');
@@ -42,6 +45,8 @@ const player = new Player(camera, world, canvas);
 player.pos.set(0.5, spawnY + 1, 0.5);
 player.touchMode = IS_TOUCH;
 
+const mobs = new MobManager(scene, world);
+
 // ---- block highlight ----
 const highlightGeo = new THREE.BoxGeometry(1.002, 1.002, 1.002);
 const highlightEdges = new THREE.LineSegments(
@@ -51,23 +56,36 @@ const highlightEdges = new THREE.LineSegments(
 highlightEdges.visible = false;
 scene.add(highlightEdges);
 
-// ---- HUD elements ----
+// ---- HUD / overlay elements ----
 const healthBar = document.getElementById('health');
 const hungerBar = document.getElementById('hunger');
 const airBar = document.getElementById('air');
+const armorBar = document.getElementById('armor');
 const hotbarEl = document.getElementById('hotbar');
 const breakBar = document.getElementById('breakbar');
 const breakFill = document.getElementById('breakfill');
 const inventoryEl = document.getElementById('inventory');
 const invGrid = document.getElementById('invgrid');
 const invHotbarEl = document.getElementById('invhotbar');
+const armorSlotsEl = document.getElementById('armorslots');
 const craftGridEl = document.getElementById('craftgrid');
 const craftOutEl = document.getElementById('craftout');
 const invCloseBtn = document.getElementById('invclose');
+const furnaceEl = document.getElementById('furnace');
+const furnInputEl = document.getElementById('furn-input');
+const furnFuelEl = document.getElementById('furn-fuel');
+const furnOutputEl = document.getElementById('furn-output');
+const furnInvGrid = document.getElementById('furn-invgrid');
+const furnHotbarEl = document.getElementById('furn-hotbar');
+const furnFlameEl = document.getElementById('furnflame');
+const furnBarFill = document.getElementById('furnbarfill');
+const furnCloseBtn = document.getElementById('furnaceclose');
 const deathEl = document.getElementById('death');
 const respawnBtn = document.getElementById('respawn');
 const clockEl = document.getElementById('clock');
 const toastEl = document.getElementById('toast');
+
+const ARMOR_SLOTS = ['head', 'chest', 'legs', 'feet'];
 
 function toast(msg) {
   toastEl.textContent = msg;
@@ -76,11 +94,16 @@ function toast(msg) {
   toast._t = setTimeout(() => toastEl.classList.remove('show'), 1400);
 }
 
-// ---- icon cache ----
-const iconCache = {};
+// ---- icon / name helpers (blocks or items) ----
+const blockIconCache = {};
 function iconURL(id) {
-  if (!iconCache[id]) iconCache[id] = atlas.iconFor(id);
-  return iconCache[id];
+  if (isItem(id)) return itemIcon(id);
+  if (!blockIconCache[id]) blockIconCache[id] = atlas.iconFor(id);
+  return blockIconCache[id];
+}
+function nameOf(id) {
+  if (isItem(id)) return itemDef(id)?.name ?? '';
+  return blockDef(id)?.name ?? '';
 }
 
 // ---- hotbar render ----
@@ -110,47 +133,53 @@ function renderHotbar() {
   }
 }
 
-// ---- inventory: backpack storage + 2x2 crafting ----
-// Click-to-select-then-click-to-move/swap, shared across hotbar, storage and
-// the crafting grid (works the same for mouse clicks and touch taps).
-let pickedSlot = null; // { arr, idx } or null
+// ---- shared slot interaction (click to pick up, click to move/swap/merge) ----
+// pickedSlot stores the source array, index and the source slot's accept rule
+// (so swaps respect restricted slots like armor / furnace output).
+let pickedSlot = null;
 
-function onSlotClick(arr, idx) {
+function onSlotClick(arr, idx, opts = {}) {
+  const cur = arr[idx];
   if (!pickedSlot) {
-    if (arr[idx]) pickedSlot = { arr, idx };
+    if (cur) pickedSlot = { arr, idx, accept: opts.accept };
   } else if (pickedSlot.arr === arr && pickedSlot.idx === idx) {
     pickedSlot = null;
   } else {
-    const { arr: srcArr, idx: srcIdx } = pickedSlot;
-    const src = srcArr[srcIdx];
+    const src = pickedSlot.arr[pickedSlot.idx];
     const dst = arr[idx];
-    if (!dst) {
-      arr[idx] = src;
-      srcArr[srcIdx] = null;
-    } else if (dst.id === src.id) {
-      const move = Math.min(64 - dst.count, src.count);
-      dst.count += move;
-      src.count -= move;
-      if (src.count <= 0) srcArr[srcIdx] = null;
-    } else {
-      srcArr[srcIdx] = dst;
-      arr[idx] = src;
+    const destOK = !opts.accept || (src && opts.accept(src));
+    if (destOK && src) {
+      if (!dst) {
+        arr[idx] = src;
+        pickedSlot.arr[pickedSlot.idx] = null;
+        pickedSlot = null;
+      } else if (dst.id === src.id) {
+        const move = Math.min(64 - dst.count, src.count);
+        dst.count += move;
+        src.count -= move;
+        if (src.count <= 0) pickedSlot.arr[pickedSlot.idx] = null;
+        pickedSlot = null;
+      } else {
+        const srcOK = !pickedSlot.accept || pickedSlot.accept(dst);
+        if (srcOK) {
+          pickedSlot.arr[pickedSlot.idx] = dst;
+          arr[idx] = src;
+          pickedSlot = null;
+        }
+      }
     }
-    pickedSlot = null;
   }
-  renderInventoryScreen();
-  renderHotbar();
+  refreshScreens();
 }
 
-function makeSlotEl(arr, idx) {
+function makeSlotEl(arr, idx, opts = {}) {
   const el = document.createElement('div');
   el.className = 'islot';
   const item = arr[idx];
   if (item) {
     const img = document.createElement('img');
     img.src = iconURL(item.id);
-    const def = blockDef(item.id);
-    if (def) img.title = def.name;
+    img.title = nameOf(item.id);
     el.appendChild(img);
     if (item.count > 1) {
       const cnt = document.createElement('span');
@@ -162,10 +191,16 @@ function makeSlotEl(arr, idx) {
     el.classList.add('empty');
   }
   if (pickedSlot && pickedSlot.arr === arr && pickedSlot.idx === idx) el.classList.add('sel');
-  el.addEventListener('click', () => onSlotClick(arr, idx));
+  el.addEventListener('click', () => onSlotClick(arr, idx, opts));
   return el;
 }
 
+function fillGrid(container, arr, opts) {
+  container.innerHTML = '';
+  arr.forEach((_, i) => container.appendChild(makeSlotEl(arr, i, opts)));
+}
+
+// ---- crafting ----
 function doCraft(match) {
   if (!survival.addItem(match.output.id, match.output.count)) {
     toast('인벤토리가 가득 찼습니다');
@@ -185,14 +220,12 @@ function doCraft(match) {
     }
   }
   pickedSlot = null;
-  toast((blockDef(match.output.id)?.name ?? '') + ' 제작!');
-  renderInventoryScreen();
-  renderHotbar();
+  toast(nameOf(match.output.id) + ' 제작!');
+  refreshScreens();
 }
 
 function renderInventoryScreen() {
-  craftGridEl.innerHTML = '';
-  for (let i = 0; i < 4; i++) craftGridEl.appendChild(makeSlotEl(survival.craftGrid, i));
+  fillGrid(craftGridEl, survival.craftGrid);
 
   const match = matchRecipe(survival.craftGrid);
   craftOutEl.innerHTML = '';
@@ -211,29 +244,115 @@ function renderInventoryScreen() {
     craftOutEl.onclick = () => doCraft(match);
   }
 
-  invGrid.innerHTML = '';
-  survival.inventory.forEach((_, i) => invGrid.appendChild(makeSlotEl(survival.inventory, i)));
+  armorSlotsEl.innerHTML = '';
+  survival.armorSlots.forEach((_, i) =>
+    armorSlotsEl.appendChild(
+      makeSlotEl(survival.armorSlots, i, { accept: (it) => armorSlotOf(it.id) === ARMOR_SLOTS[i] })
+    )
+  );
 
-  invHotbarEl.innerHTML = '';
-  survival.hotbar.forEach((_, i) => invHotbarEl.appendChild(makeSlotEl(survival.hotbar, i)));
+  fillGrid(invGrid, survival.inventory);
+  fillGrid(invHotbarEl, survival.hotbar);
 }
 
+// ---- furnace ----
+const furnaceStates = new Map(); // "x,y,z" -> FurnaceState
+let currentFurnace = null;
+let lastFurnSig = '';
+
+function fkey(x, y, z) { return x + ',' + y + ',' + z; }
+
+function renderFurnaceScreen() {
+  if (!currentFurnace) return;
+  const f = currentFurnace;
+  // re-query by id: the previous slot nodes get replaced each render
+  document.getElementById('furn-input').replaceWith(makeFurnSlot(f.input, 0, 'furn-input'));
+  document.getElementById('furn-fuel').replaceWith(makeFurnSlot(f.fuel, 0, 'furn-fuel'));
+  document.getElementById('furn-output').replaceWith(makeFurnSlot(f.output, 0, 'furn-output', { accept: () => false }));
+  fillGrid(furnInvGrid, survival.inventory);
+  fillGrid(furnHotbarEl, survival.hotbar);
+  updateFurnaceMeters();
+}
+
+// furnace slots are referenced by id so they can be re-created in place
+function makeFurnSlot(arr, idx, id, opts) {
+  const el = makeSlotEl(arr, idx, opts);
+  el.id = id;
+  return el;
+}
+
+function updateFurnaceMeters() {
+  if (!currentFurnace) return;
+  furnFlameEl.classList.toggle('on', currentFurnace.lit);
+  furnBarFill.style.width = Math.min(100, (currentFurnace.cook / COOK_TIME) * 100) + '%';
+}
+
+function furnSig(f) {
+  const c = (s) => (s ? s.id + 'x' + s.count : '-');
+  return c(f.input[0]) + '|' + c(f.fuel[0]) + '|' + c(f.output[0]);
+}
+
+// ---- screens refresh ----
+function refreshScreens() {
+  renderHotbar();
+  if (inventoryOpen) renderInventoryScreen();
+  if (furnaceOpen) { renderFurnaceScreen(); lastFurnSig = currentFurnace ? furnSig(currentFurnace) : ''; }
+}
+
+// ---- menus ----
 let inventoryOpen = false;
+let furnaceOpen = false;
+function menuOpen() { return inventoryOpen || furnaceOpen; }
+
 function toggleInventory(force) {
-  inventoryOpen = force !== undefined ? force : !inventoryOpen;
-  inventoryEl.style.display = inventoryOpen ? 'flex' : 'none';
-  if (inventoryOpen) {
+  const next = force !== undefined ? force : !inventoryOpen;
+  if (next) {
+    closeFurnace();
+    inventoryOpen = true;
+    inventoryEl.style.display = 'flex';
+    mining = false; placing = false;
     if (document.pointerLockElement) document.exitPointerLock();
     renderInventoryScreen();
   } else {
+    inventoryOpen = false;
+    inventoryEl.style.display = 'none';
     pickedSlot = null;
   }
 }
+
+function openFurnaceAt(x, y, z) {
+  const k = fkey(x, y, z);
+  let st = furnaceStates.get(k);
+  if (!st) { st = new FurnaceState(); furnaceStates.set(k, st); }
+  inventoryOpen = false;
+  inventoryEl.style.display = 'none';
+  furnaceOpen = true;
+  currentFurnace = st;
+  furnaceEl.style.display = 'flex';
+  mining = false; placing = false;
+  if (document.pointerLockElement) document.exitPointerLock();
+  renderFurnaceScreen();
+  lastFurnSig = furnSig(st);
+}
+
+function closeFurnace() {
+  if (!furnaceOpen) return;
+  furnaceOpen = false;
+  furnaceEl.style.display = 'none';
+  currentFurnace = null;
+  pickedSlot = null;
+}
+
+function closeAllMenus() {
+  toggleInventory(false);
+  closeFurnace();
+}
+
 invCloseBtn.addEventListener('click', () => toggleInventory(false));
+furnCloseBtn.addEventListener('click', () => closeFurnace());
 
 // ---- HUD bars ----
 function renderHUD() {
-  // health hearts
   healthBar.innerHTML = '';
   for (let i = 0; i < survival.maxHealth / 2; i++) {
     const h = document.createElement('div');
@@ -248,6 +367,16 @@ function renderHUD() {
     h.className = 'icon food ' + (v >= 2 ? 'full' : v === 1 ? 'half' : 'empty');
     hungerBar.appendChild(h);
   }
+  // armor (only the filled portion, up to 10 shields)
+  armorBar.innerHTML = '';
+  const ap = survival.armorPoints();
+  for (let i = 0; i < 10; i++) {
+    const v = ap - i * 2;
+    if (v <= 0) break;
+    const a = document.createElement('div');
+    a.className = 'icon armor ' + (v >= 2 ? 'full' : 'half');
+    armorBar.appendChild(a);
+  }
   // air (only when underwater)
   airBar.innerHTML = '';
   if (survival.air < survival.maxAir) {
@@ -259,35 +388,36 @@ function renderHUD() {
   }
 }
 
-// ---- input: hotbar select, inventory, eat ----
+// ---- keyboard input ----
 window.addEventListener('keydown', (e) => {
   if (e.code.startsWith('Digit')) {
     const n = parseInt(e.code.slice(5), 10);
     if (n >= 1 && n <= 9) { survival.selected = n - 1; renderHotbar(); }
   }
-  if (e.code === 'KeyE') toggleInventory();
-  if (e.code === 'Escape') toggleInventory(false);
+  if (e.code === 'KeyE') { if (furnaceOpen) closeFurnace(); else toggleInventory(); }
+  if (e.code === 'Escape') closeAllMenus();
   if (e.code === 'KeyR') {
-    if (survival.eatSelected()) { toast('냠냠!'); renderHUD(); }
+    if (survival.eatSelected()) { toast('냠냠!'); renderHotbar(); renderHUD(); }
   }
 });
 window.addEventListener('wheel', (e) => {
-  if (inventoryOpen) return;
+  if (menuOpen()) return;
   const dir = Math.sign(e.deltaY);
   survival.selected = (survival.selected + dir + 9) % 9;
   renderHotbar();
 });
 
-// ---- mining / placing ----
+// ---- mining / placing / combat ----
 let mining = false;
 let placing = false;
 let breakProgress = 0;
 let breakTarget = null;
+let placeCooldown = 0;
 
 canvas.addEventListener('mousedown', (e) => {
   if (!player.locked) return;
-  if (e.button === 0) mining = true;
-  if (e.button === 2) placing = true;
+  if (e.button === 0) { if (!tryAttack()) mining = true; }
+  if (e.button === 2) { if (!interactUse()) placing = true; }
 });
 window.addEventListener('mouseup', (e) => {
   if (e.button === 0) { mining = false; breakProgress = 0; breakTarget = null; }
@@ -295,16 +425,53 @@ window.addEventListener('mouseup', (e) => {
 });
 window.addEventListener('contextmenu', (e) => e.preventDefault());
 
+function blockDistance(hit) {
+  const dx = hit.x + 0.5 - camera.position.x;
+  const dy = hit.y + 0.5 - camera.position.y;
+  const dz = hit.z + 0.5 - camera.position.z;
+  return Math.hypot(dx, dy, dz);
+}
+
+// Attack the nearest zombie in front (if closer than the targeted block).
+function tryAttack() {
+  const dir = player.lookDir().normalize();
+  const hitMob = mobs.attackRay(camera.position, dir, player.reach + 0.5);
+  if (!hitMob) return false;
+  const block = player.raycast();
+  if (block && blockDistance(block) < hitMob.dist) return false;
+  mobs.damageMob(hitMob.mob, survival.attackDamage(), player.pos);
+  return true;
+}
+
+// Right-click interactions: open furnace / crafting table, ignite TNT with
+// flint & steel. Returns true if something was handled (so we skip placing).
+function interactUse() {
+  const hit = player.raycast();
+  if (!hit) return false;
+  if (hit.id === ID.Furnace) { openFurnaceAt(hit.x, hit.y, hit.z); return true; }
+  if (hit.id === ID.CraftingTable) { toggleInventory(true); return true; }
+  const sel = survival.hotbar[survival.selected];
+  if (sel && isItem(sel.id) && itemDef(sel.id)?.use === 'ignite') {
+    if (hit.id === ID.TNT) {
+      primeTNT(hit.x, hit.y, hit.z, 1.6);
+      toast('치익...');
+    } else {
+      toast('불을 붙일 수 없습니다');
+    }
+    return true;
+  }
+  return false;
+}
+
 function tryPlace() {
   const hit = player.raycast();
   if (!hit) return;
   const id = survival.selectedId();
-  if (!id) return;
+  if (!id || isItem(id)) return; // items aren't placeable
   const px = hit.x + hit.nx;
   const py = hit.y + hit.ny;
   const pz = hit.z + hit.nz;
   if (world.getBlock(px, py, pz) !== 0) return;
-  // don't place inside the player
   const minX = Math.floor(player.pos.x - 0.3), maxX = Math.floor(player.pos.x + 0.3);
   const minY = Math.floor(player.pos.y), maxY = Math.floor(player.pos.y + 1.8);
   const minZ = Math.floor(player.pos.z - 0.3), maxZ = Math.floor(player.pos.z + 0.3);
@@ -323,8 +490,6 @@ function rebuildAround(wx, wz) {
       if (c && c.dirty) world.buildMesh(c);
     }
 }
-
-let placeCooldown = 0;
 
 function updateMining(dt) {
   const hit = player.raycast();
@@ -348,6 +513,7 @@ function updateMining(dt) {
     if (ratio >= 1) {
       world.setBlock(hit.x, hit.y, hit.z, 0);
       rebuildAround(hit.x, hit.z);
+      if (hit.id === ID.Furnace) furnaceStates.delete(fkey(hit.x, hit.y, hit.z));
       if (!survival.addItem(def.drop ?? hit.id)) toast('인벤토리가 가득 찼습니다');
       survival.addExhaustion(0.05);
       breakProgress = 0;
@@ -369,28 +535,113 @@ function updateMining(dt) {
   placeCooldown -= dt;
 }
 
+// ---- TNT / explosions ----
+const primed = [];
+const effects = [];
+
+function primeTNT(x, y, z, fuse) {
+  world.setBlock(x, y, z, 0);
+  rebuildAround(x, z);
+  const mesh = new THREE.Mesh(
+    new THREE.BoxGeometry(1.02, 1.02, 1.02),
+    new THREE.MeshBasicMaterial({ color: 0xff3322 })
+  );
+  mesh.position.set(x + 0.5, y + 0.5, z + 0.5);
+  scene.add(mesh);
+  primed.push({ mesh, x, y, z, fuse });
+}
+
+function updatePrimed(dt) {
+  for (let i = primed.length - 1; i >= 0; i--) {
+    const p = primed[i];
+    p.fuse -= dt;
+    p.mesh.visible = Math.floor(p.fuse * 8) % 2 === 0;
+    if (p.fuse <= 0) {
+      scene.remove(p.mesh);
+      p.mesh.geometry.dispose();
+      p.mesh.material.dispose();
+      primed.splice(i, 1);
+      explode(p.x + 0.5, p.y + 0.5, p.z + 0.5, 3);
+    }
+  }
+}
+
+function explode(cx, cy, cz, R) {
+  const bx0 = Math.floor(cx), by0 = Math.floor(cy), bz0 = Math.floor(cz);
+  for (let dy = -R; dy <= R; dy++)
+    for (let dz = -R; dz <= R; dz++)
+      for (let dx = -R; dx <= R; dx++) {
+        if (dx * dx + dy * dy + dz * dz > R * R + 1) continue;
+        const bx = bx0 + dx, by = by0 + dy, bz = bz0 + dz;
+        const id = world.getBlock(bx, by, bz);
+        if (id === 0) continue;
+        if (id === ID.TNT) { primeTNT(bx, by, bz, 0.15 + Math.random() * 0.15); continue; }
+        const def = blockDef(id);
+        if (!def || def.hardness === Infinity || def.liquid) continue;
+        if (id === ID.Furnace) furnaceStates.delete(fkey(bx, by, bz));
+        world.setBlock(bx, by, bz, 0);
+      }
+  rebuildAround(bx0, bz0);
+
+  // damage + knockback the player
+  const pd = Math.hypot(player.pos.x - cx, player.pos.y + 0.9 - cy, player.pos.z - cz);
+  if (pd < R + 1.5) {
+    const f = 1 - pd / (R + 1.5);
+    survival.hurt(14 * f);
+    const dx = player.pos.x - cx, dz = player.pos.z - cz;
+    const d = Math.hypot(dx, dz) || 1;
+    player.vel.x += (dx / d) * 11 * f;
+    player.vel.z += (dz / d) * 11 * f;
+    player.vel.y += 8 * f;
+  }
+  mobs.damageInRadius(cx, cy, cz, R + 1, 18);
+
+  // flash effect
+  const mesh = new THREE.Mesh(
+    new THREE.SphereGeometry(1, 10, 10),
+    new THREE.MeshBasicMaterial({ color: 0xffb04a, transparent: true, opacity: 0.85, depthWrite: false })
+  );
+  mesh.position.set(cx, cy, cz);
+  scene.add(mesh);
+  effects.push({ mesh, life: 0.45, max: 0.45, R });
+}
+
+function updateEffects(dt) {
+  for (let i = effects.length - 1; i >= 0; i--) {
+    const e = effects[i];
+    e.life -= dt;
+    const t = 1 - e.life / e.max;
+    e.mesh.scale.setScalar(0.6 + t * e.R * 1.6);
+    e.mesh.material.opacity = 0.85 * (1 - t);
+    if (e.life <= 0) {
+      scene.remove(e.mesh);
+      e.mesh.geometry.dispose();
+      e.mesh.material.dispose();
+      effects.splice(i, 1);
+    }
+  }
+}
+
 // ---- day / night ----
-let timeOfDay = 0.25; // 0..1, start morning
-const DAY_LENGTH = 600; // seconds for full cycle
+let timeOfDay = 0.25;
+const DAY_LENGTH = 600;
+let brightness = 1;
+let isNight = false;
 
 function updateDayNight(dt) {
   timeOfDay = (timeOfDay + dt / DAY_LENGTH) % 1;
-  // brightness: peak at noon (0.25..0.5 day region). Use cosine.
-  const angle = timeOfDay * Math.PI * 2;
-  let light = Math.sin(angle - Math.PI / 2) * 0.5 + 0.5; // 0 at midnight, 1 at noon (shifted)
-  // shift so 0.25 is morning bright; recompute simpler:
-  light = Math.cos((timeOfDay - 0.3) * Math.PI * 2) * 0.5 + 0.5;
-  const bright = 0.28 + 0.72 * Math.max(0, light);
+  const light = Math.cos((timeOfDay - 0.3) * Math.PI * 2) * 0.5 + 0.5;
+  brightness = 0.28 + 0.72 * Math.max(0, light);
+  isNight = light < 0.22;
 
-  world.opaqueMat.color.setScalar(bright);
-  world.cutoutMat.color.setScalar(bright);
-  world.waterMat.color.setScalar(bright);
+  world.opaqueMat.color.setScalar(brightness);
+  world.cutoutMat.color.setScalar(brightness);
+  world.waterMat.color.setScalar(brightness);
 
   const sky = NIGHT_SKY.clone().lerp(DAY_SKY, Math.max(0, light));
   scene.background.copy(sky);
   scene.fog.color.copy(sky);
 
-  // clock label
   const hours = Math.floor(((timeOfDay + 0.25) % 1) * 24);
   const mins = Math.floor((((timeOfDay + 0.25) % 1) * 24 * 60) % 60);
   clockEl.textContent =
@@ -416,9 +667,14 @@ function loop(now) {
   const dt = (now - last) / 1000;
   last = now;
 
-  if (!survival.dead && !inventoryOpen) {
+  updateDayNight(dt);
+
+  const paused = survival.dead || menuOpen();
+  if (!paused) {
     player.update(dt);
     updateMining(dt);
+    mobs.update(dt, { player, survival, isNight, brightness });
+    updatePrimed(dt);
 
     const headInWater = isLiquid(
       world.getBlock(Math.floor(player.pos.x), Math.floor(player.pos.y + 1.6), Math.floor(player.pos.z))
@@ -438,8 +694,17 @@ function loop(now) {
     }
   }
 
+  // furnaces smelt in the background, even with a menu open
+  for (const f of furnaceStates.values()) f.tick(dt);
+  if (furnaceOpen && currentFurnace) {
+    updateFurnaceMeters();
+    const sig = furnSig(currentFurnace);
+    if (sig !== lastFurnSig) { renderFurnaceScreen(); lastFurnSig = sig; }
+  }
+
+  updateEffects(dt);
+
   world.update(player.pos.x, player.pos.z, RENDER_RADIUS, 2);
-  updateDayNight(dt);
 
   hudTimer += dt;
   if (hudTimer > 0.2) { renderHUD(); hudTimer = 0; }
@@ -455,6 +720,13 @@ window.addEventListener('resize', () => {
 });
 
 // ---- mobile touch controls ----
+function touchPrimary() {
+  if (tryAttack()) return;
+  if (interactUse()) return;
+  tryPlace();
+  renderHotbar();
+}
+
 function setupTouchControls() {
   if (!IS_TOUCH) return;
   document.body.classList.add('touch');
@@ -472,11 +744,10 @@ function setupTouchControls() {
     </div>`;
   document.body.appendChild(root);
 
-  // virtual joystick
   const joy = document.getElementById('joy');
   const knob = document.getElementById('joy-knob');
   const R = 48;
-  const DEAD = 0.15; // ignore tiny drift near center
+  const DEAD = 0.15;
   let joyId = null;
   let joyCx = 0, joyCy = 0;
   const joyMove = (e) => {
@@ -487,15 +758,10 @@ function setupTouchControls() {
       const d = Math.hypot(dx, dy);
       if (d > R) { dx = (dx / d) * R; dy = (dy / d) * R; }
       knob.style.transform = `translate(${dx}px, ${dy}px)`;
-      // analog magnitude with dead zone, rescaled to 0..1
       let nx = dx / R, ny = dy / R;
       const mag = Math.hypot(nx, ny);
-      if (mag < DEAD) {
-        nx = 0; ny = 0;
-      } else {
-        const scale = (mag - DEAD) / (1 - DEAD) / mag;
-        nx *= scale; ny *= scale;
-      }
+      if (mag < DEAD) { nx = 0; ny = 0; }
+      else { const scale = (mag - DEAD) / (1 - DEAD) / mag; nx *= scale; ny *= scale; }
       player.joyStr = nx;
       player.joyFwd = -ny;
       e.preventDefault();
@@ -522,8 +788,7 @@ function setupTouchControls() {
   joy.addEventListener('touchend', joyEnd);
   joy.addEventListener('touchcancel', joyEnd);
 
-  // look anywhere on the canvas; a clean short tap places a block, a hold
-  // mines the block under the crosshair (mobile-Minecraft-style).
+  // canvas: drag to look, quick tap to attack/use/place, hold to mine
   const HOLD_MS = 280;
   const MOVE_THRESH = 10;
   let lookId = null, lastX = 0, lastY = 0, startX = 0, startY = 0;
@@ -535,7 +800,7 @@ function setupTouchControls() {
   };
 
   canvas.addEventListener('touchstart', (e) => {
-    if (inventoryOpen || survival.dead) return;
+    if (menuOpen() || survival.dead) return;
     if (lookId === null) {
       const t = e.changedTouches[0];
       lookId = t.identifier;
@@ -569,13 +834,12 @@ function setupTouchControls() {
       lookId = null;
       cancelHold();
       if (touchMining) stopTouchMining();
-      else if (!holdMoved) tryPlace();
+      else if (!holdMoved) touchPrimary();
     }
   };
   canvas.addEventListener('touchend', lookEnd);
   canvas.addEventListener('touchcancel', lookEnd);
 
-  // action buttons
   const hold = (id, on, off) => {
     const el = document.getElementById(id);
     el.addEventListener('touchstart', (e) => { on(); el.classList.add('down'); e.preventDefault(); }, { passive: false });
@@ -590,16 +854,21 @@ function setupTouchControls() {
   hold('t-jump', () => { player.keys['Space'] = true; }, () => { player.keys['Space'] = false; });
   hold('t-down', () => { player.keys['ControlLeft'] = true; }, () => { player.keys['ControlLeft'] = false; });
   tap('t-fly', () => { player.flying = !player.flying; toast(player.flying ? '비행 ON' : '비행 OFF'); });
-  tap('t-eat', () => { if (survival.eatSelected()) { toast('냠냠!'); renderHUD(); } });
-  tap('t-inv', () => { toggleInventory(); });
+  tap('t-eat', () => { if (survival.eatSelected()) { toast('냠냠!'); renderHotbar(); renderHUD(); } });
+  tap('t-inv', () => { if (furnaceOpen) closeFurnace(); else toggleInventory(); });
 }
 
 // init UI
 renderHotbar();
 renderHUD();
-toggleInventory(false);
+inventoryEl.style.display = 'none';
+furnaceEl.style.display = 'none';
 setupTouchControls();
 requestAnimationFrame(loop);
 
-// expose for debugging
-window.__game = { world, player, survival };
+// expose for debugging / tests
+window.__game = {
+  world, player, survival, mobs, furnaceStates, scene,
+  openFurnaceAt, primeTNT, toggleInventory, closeFurnace,
+  renderInventoryScreen, renderHUD,
+};

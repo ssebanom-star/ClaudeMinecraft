@@ -13,6 +13,8 @@
 //   gradient- vertical gradient
 //   cross   - crossed sapling/flower (rendered flat)
 
+import { ITEM } from './items.js';
+
 // Block id 0 is always AIR.
 export const AIR = 0;
 
@@ -41,10 +43,10 @@ export const BLOCKS = [
   b('Grass Block',   { top: '#5fbb46', side: '#7d6b3f', bottom: '#7a5a3a', style: 'grass', tool: 'shovel', hardness: 0.9 }),
   b('Dirt',          { color: '#7a5a3a', style: 'noise', tool: 'shovel', hardness: 0.8 }),
   b('Stone',         { color: '#8c8c8c', style: 'noise', tool: 'pickaxe', hardness: 2.5 }),
-  b('Cobblestone',   { color: '#7f7f7f', style: 'noise', tool: 'pickaxe', hardness: 2.8 }),
+  b('Cobblestone',   { color: '#7f7f7f', style: 'cobble', tool: 'pickaxe', hardness: 2.8 }),
   b('Sand',          { color: '#e6d8a0', style: 'noise', tool: 'shovel', hardness: 0.7 }),
   b('Sandstone',     { top: '#e7d9a3', side: '#ddca8e', bottom: '#cdb877', style: 'noise', tool: 'pickaxe', hardness: 2.0 }),
-  b('Gravel',        { color: '#857f7a', style: 'noise', tool: 'shovel', hardness: 0.9 }),
+  b('Gravel',        { color: '#857f7a', style: 'noise', tool: 'shovel', hardness: 0.9, drop: ITEM.Flint }),
   b('Clay',          { color: '#9aa1ad', style: 'noise', tool: 'shovel', hardness: 0.9 }),
   b('Snow Block',    { color: '#f2f7fb', style: 'noise', tool: 'shovel', hardness: 0.6 }),
   b('Ice',           { color: '#9bc8f0', style: 'pane', transparent: true, tool: 'pickaxe', hardness: 0.6 }),
@@ -60,10 +62,10 @@ export const BLOCKS = [
   b('Spruce Log',    { top: '#5b4327', side: '#43331f', bottom: '#5b4327', style: 'log', tool: 'axe', hardness: 2.0, flammable: true }),
   b('Spruce Planks', { color: '#7a5a34', style: 'plank', tool: 'axe', hardness: 1.8, flammable: true }),
 
-  b('Coal Ore',      { color: '#8c8c8c', side: '#8c8c8c', style: 'ore', top: '#2b2b2b', tool: 'pickaxe', hardness: 3.0 }),
+  b('Coal Ore',      { color: '#8c8c8c', side: '#8c8c8c', style: 'ore', top: '#2b2b2b', tool: 'pickaxe', hardness: 3.0, drop: ITEM.Coal }),
   b('Iron Ore',      { color: '#8c8c8c', top: '#d8a679', style: 'ore', tool: 'pickaxe', hardness: 3.0 }),
   b('Gold Ore',      { color: '#8c8c8c', top: '#f2d34b', style: 'ore', tool: 'pickaxe', hardness: 3.0 }),
-  b('Diamond Ore',   { color: '#8c8c8c', top: '#4be0d6', style: 'ore', tool: 'pickaxe', hardness: 3.5 }),
+  b('Diamond Ore',   { color: '#8c8c8c', top: '#4be0d6', style: 'ore', tool: 'pickaxe', hardness: 3.5, drop: ITEM.Diamond }),
   b('Emerald Ore',   { color: '#8c8c8c', top: '#3fd96b', style: 'ore', tool: 'pickaxe', hardness: 3.5 }),
   b('Redstone Ore',  { color: '#8c8c8c', top: '#e03a2a', style: 'ore', tool: 'pickaxe', hardness: 3.0, light: 7 }),
   b('Lapis Ore',     { color: '#8c8c8c', top: '#2350c8', style: 'ore', tool: 'pickaxe', hardness: 3.0 }),
@@ -85,7 +87,7 @@ export const BLOCKS = [
   b('Melon',         { color: '#5a8a2a', style: 'noise', tool: 'axe', hardness: 1.0, edible: 3 }),
   b('Cactus',        { top: '#3f7a2a', side: '#356b24', bottom: '#3f7a2a', style: 'noise', transparent: true, hardness: 0.5 }),
   b('Mushroom Block',{ color: '#d6d0c0', style: 'noise', tool: 'axe', hardness: 0.5, edible: 1 }),
-  b('Mossy Cobble',  { color: '#6f7a5a', style: 'noise', tool: 'pickaxe', hardness: 2.8 }),
+  b('Mossy Cobble',  { color: '#6f7a5a', style: 'cobble', tool: 'pickaxe', hardness: 2.8 }),
   b('Obsidian',      { color: '#1a1426', style: 'noise', tool: 'pickaxe', hardness: 9.0 }),
   b('Netherrack',    { color: '#7a3030', style: 'noise', tool: 'pickaxe', hardness: 1.0, light: 2 }),
   b('Glowstone',     { color: '#e8c45a', style: 'noise', light: 15, hardness: 0.6 }),
