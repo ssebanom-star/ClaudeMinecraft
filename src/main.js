@@ -5,7 +5,8 @@ import { buildAtlas } from './textures.js';
 import { World, CHUNK } from './world.js';
 import { Player } from './player.js';
 import { Survival } from './survival.js';
-import { BLOCKS, blockDef, isLiquid } from './blocks.js';
+import { blockDef, isLiquid } from './blocks.js';
+import { matchRecipe } from './recipes.js';
 
 // Detect touch / mobile devices to enable on-screen controls and lighter settings.
 const IS_TOUCH =
@@ -59,6 +60,10 @@ const breakBar = document.getElementById('breakbar');
 const breakFill = document.getElementById('breakfill');
 const inventoryEl = document.getElementById('inventory');
 const invGrid = document.getElementById('invgrid');
+const invHotbarEl = document.getElementById('invhotbar');
+const craftGridEl = document.getElementById('craftgrid');
+const craftOutEl = document.getElementById('craftout');
+const invCloseBtn = document.getElementById('invclose');
 const deathEl = document.getElementById('death');
 const respawnBtn = document.getElementById('respawn');
 const clockEl = document.getElementById('clock');
@@ -105,35 +110,126 @@ function renderHotbar() {
   }
 }
 
-// ---- inventory (all 50 blocks) ----
-function buildInventory() {
-  invGrid.innerHTML = '';
-  BLOCKS.forEach((def, i) => {
-    const id = i + 1;
-    const cell = document.createElement('div');
-    cell.className = 'invcell';
-    cell.title = def.name;
+// ---- inventory: backpack storage + 2x2 crafting ----
+// Click-to-select-then-click-to-move/swap, shared across hotbar, storage and
+// the crafting grid (works the same for mouse clicks and touch taps).
+let pickedSlot = null; // { arr, idx } or null
+
+function onSlotClick(arr, idx) {
+  if (!pickedSlot) {
+    if (arr[idx]) pickedSlot = { arr, idx };
+  } else if (pickedSlot.arr === arr && pickedSlot.idx === idx) {
+    pickedSlot = null;
+  } else {
+    const { arr: srcArr, idx: srcIdx } = pickedSlot;
+    const src = srcArr[srcIdx];
+    const dst = arr[idx];
+    if (!dst) {
+      arr[idx] = src;
+      srcArr[srcIdx] = null;
+    } else if (dst.id === src.id) {
+      const move = Math.min(64 - dst.count, src.count);
+      dst.count += move;
+      src.count -= move;
+      if (src.count <= 0) srcArr[srcIdx] = null;
+    } else {
+      srcArr[srcIdx] = dst;
+      arr[idx] = src;
+    }
+    pickedSlot = null;
+  }
+  renderInventoryScreen();
+  renderHotbar();
+}
+
+function makeSlotEl(arr, idx) {
+  const el = document.createElement('div');
+  el.className = 'islot';
+  const item = arr[idx];
+  if (item) {
     const img = document.createElement('img');
-    img.src = iconURL(id);
-    cell.appendChild(img);
-    const label = document.createElement('span');
-    label.textContent = def.name;
-    cell.appendChild(label);
-    cell.addEventListener('click', () => {
-      survival.setHotbar(survival.selected, id);
-      renderHotbar();
-      toast(def.name + ' → 슬롯 ' + (survival.selected + 1));
-    });
-    invGrid.appendChild(cell);
-  });
+    img.src = iconURL(item.id);
+    const def = blockDef(item.id);
+    if (def) img.title = def.name;
+    el.appendChild(img);
+    if (item.count > 1) {
+      const cnt = document.createElement('span');
+      cnt.className = 'cnt';
+      cnt.textContent = item.count;
+      el.appendChild(cnt);
+    }
+  } else {
+    el.classList.add('empty');
+  }
+  if (pickedSlot && pickedSlot.arr === arr && pickedSlot.idx === idx) el.classList.add('sel');
+  el.addEventListener('click', () => onSlotClick(arr, idx));
+  return el;
+}
+
+function doCraft(match) {
+  if (!survival.addItem(match.output.id, match.output.count)) {
+    toast('인벤토리가 가득 찼습니다');
+    return;
+  }
+  for (const idStr of Object.keys(match.inputs)) {
+    const id = Number(idStr);
+    let need = match.inputs[idStr];
+    for (let i = 0; i < 4 && need > 0; i++) {
+      const s = survival.craftGrid[i];
+      if (s && s.id === id) {
+        const take = Math.min(need, s.count);
+        s.count -= take;
+        need -= take;
+        if (s.count <= 0) survival.craftGrid[i] = null;
+      }
+    }
+  }
+  pickedSlot = null;
+  toast((blockDef(match.output.id)?.name ?? '') + ' 제작!');
+  renderInventoryScreen();
+  renderHotbar();
+}
+
+function renderInventoryScreen() {
+  craftGridEl.innerHTML = '';
+  for (let i = 0; i < 4; i++) craftGridEl.appendChild(makeSlotEl(survival.craftGrid, i));
+
+  const match = matchRecipe(survival.craftGrid);
+  craftOutEl.innerHTML = '';
+  craftOutEl.classList.toggle('empty', !match);
+  craftOutEl.onclick = null;
+  if (match) {
+    const img = document.createElement('img');
+    img.src = iconURL(match.output.id);
+    craftOutEl.appendChild(img);
+    if (match.output.count > 1) {
+      const cnt = document.createElement('span');
+      cnt.className = 'cnt';
+      cnt.textContent = match.output.count;
+      craftOutEl.appendChild(cnt);
+    }
+    craftOutEl.onclick = () => doCraft(match);
+  }
+
+  invGrid.innerHTML = '';
+  survival.inventory.forEach((_, i) => invGrid.appendChild(makeSlotEl(survival.inventory, i)));
+
+  invHotbarEl.innerHTML = '';
+  survival.hotbar.forEach((_, i) => invHotbarEl.appendChild(makeSlotEl(survival.hotbar, i)));
 }
 
 let inventoryOpen = false;
 function toggleInventory(force) {
   inventoryOpen = force !== undefined ? force : !inventoryOpen;
   inventoryEl.style.display = inventoryOpen ? 'flex' : 'none';
-  if (inventoryOpen && document.pointerLockElement) document.exitPointerLock();
+  if (inventoryOpen) {
+    if (document.pointerLockElement) document.exitPointerLock();
+    renderInventoryScreen();
+  } else {
+    pickedSlot = null;
+  }
 }
+invCloseBtn.addEventListener('click', () => toggleInventory(false));
 
 // ---- HUD bars ----
 function renderHUD() {
@@ -252,7 +348,7 @@ function updateMining(dt) {
     if (ratio >= 1) {
       world.setBlock(hit.x, hit.y, hit.z, 0);
       rebuildAround(hit.x, hit.z);
-      survival.addItem(def.drop ?? hit.id);
+      if (!survival.addItem(def.drop ?? hit.id)) toast('인벤토리가 가득 찼습니다');
       survival.addExhaustion(0.05);
       breakProgress = 0;
       breakTarget = null;
@@ -367,16 +463,12 @@ function setupTouchControls() {
   root.id = 'touch-controls';
   root.innerHTML = `
     <div id="joy"><div id="joy-knob"></div></div>
-    <div id="act">
-      <button class="tbtn big jump" id="t-jump" aria-label="jump">⤒</button>
-      <button class="tbtn big mine" id="t-mine" aria-label="mine">⛏</button>
-      <button class="tbtn big place" id="t-place" aria-label="place">▦</button>
-    </div>
+    <button class="tbtn jump" id="t-jump" aria-label="jump">⤒</button>
     <div id="side">
-      <button class="tbtn" id="t-inv" aria-label="inventory">🎒</button>
-      <button class="tbtn" id="t-fly" aria-label="fly">✈</button>
-      <button class="tbtn" id="t-down" aria-label="down">⬇</button>
-      <button class="tbtn" id="t-eat" aria-label="eat">🍖</button>
+      <button class="tbtn small" id="t-inv" aria-label="inventory">🎒</button>
+      <button class="tbtn small" id="t-fly" aria-label="fly">✈</button>
+      <button class="tbtn small" id="t-down" aria-label="down">⬇</button>
+      <button class="tbtn small" id="t-eat" aria-label="eat">🍖</button>
     </div>`;
   document.body.appendChild(root);
 
@@ -430,21 +522,41 @@ function setupTouchControls() {
   joy.addEventListener('touchend', joyEnd);
   joy.addEventListener('touchcancel', joyEnd);
 
-  // look: drag anywhere on the canvas
-  let lookId = null, lastX = 0, lastY = 0;
+  // look anywhere on the canvas; a clean short tap places a block, a hold
+  // mines the block under the crosshair (mobile-Minecraft-style).
+  const HOLD_MS = 280;
+  const MOVE_THRESH = 10;
+  let lookId = null, lastX = 0, lastY = 0, startX = 0, startY = 0;
+  let holdTimer = null, holdMoved = false, touchMining = false;
+
+  const cancelHold = () => { if (holdTimer) { clearTimeout(holdTimer); holdTimer = null; } };
+  const stopTouchMining = () => {
+    if (touchMining) { touchMining = false; mining = false; breakProgress = 0; breakTarget = null; }
+  };
+
   canvas.addEventListener('touchstart', (e) => {
     if (inventoryOpen || survival.dead) return;
     if (lookId === null) {
       const t = e.changedTouches[0];
       lookId = t.identifier;
-      lastX = t.clientX;
-      lastY = t.clientY;
+      lastX = t.clientX; lastY = t.clientY;
+      startX = t.clientX; startY = t.clientY;
+      holdMoved = false;
+      cancelHold();
+      holdTimer = setTimeout(() => {
+        holdTimer = null;
+        if (!holdMoved) { touchMining = true; mining = true; }
+      }, HOLD_MS);
     }
     e.preventDefault();
   }, { passive: false });
   canvas.addEventListener('touchmove', (e) => {
     for (const t of e.changedTouches) {
       if (t.identifier !== lookId) continue;
+      if (!holdMoved && Math.hypot(t.clientX - startX, t.clientY - startY) > MOVE_THRESH) {
+        holdMoved = true;
+        cancelHold();
+      }
       player.addLook(t.clientX - lastX, t.clientY - lastY);
       lastX = t.clientX;
       lastY = t.clientY;
@@ -452,7 +564,13 @@ function setupTouchControls() {
     }
   }, { passive: false });
   const lookEnd = (e) => {
-    for (const t of e.changedTouches) if (t.identifier === lookId) lookId = null;
+    for (const t of e.changedTouches) {
+      if (t.identifier !== lookId) continue;
+      lookId = null;
+      cancelHold();
+      if (touchMining) stopTouchMining();
+      else if (!holdMoved) tryPlace();
+    }
   };
   canvas.addEventListener('touchend', lookEnd);
   canvas.addEventListener('touchcancel', lookEnd);
@@ -470,8 +588,6 @@ function setupTouchControls() {
   };
 
   hold('t-jump', () => { player.keys['Space'] = true; }, () => { player.keys['Space'] = false; });
-  hold('t-mine', () => { mining = true; }, () => { mining = false; breakProgress = 0; breakTarget = null; });
-  hold('t-place', () => { placing = true; }, () => { placing = false; });
   hold('t-down', () => { player.keys['ControlLeft'] = true; }, () => { player.keys['ControlLeft'] = false; });
   tap('t-fly', () => { player.flying = !player.flying; toast(player.flying ? '비행 ON' : '비행 OFF'); });
   tap('t-eat', () => { if (survival.eatSelected()) { toast('냠냠!'); renderHUD(); } });
@@ -480,7 +596,6 @@ function setupTouchControls() {
 
 // init UI
 renderHotbar();
-buildInventory();
 renderHUD();
 toggleInventory(false);
 setupTouchControls();

@@ -46,9 +46,24 @@
   <!-- inventory overlay -->
   <div id="inventory">
     <div class="invpanel">
-      <h2>인벤토리 — 블록 50종</h2>
-      <p class="hint">블록을 클릭하면 선택된 핫바 슬롯(<span id="selnote">1~9 / 스크롤</span>)에 들어갑니다. <b>E</b> 키로 닫기.</p>
-      <div id="invgrid"></div>
+      <div class="invhead">
+        <h2>인벤토리</h2>
+        <button id="invclose" aria-label="닫기">✕</button>
+      </div>
+      <p class="hint">슬롯을 탭해 선택하고, 다른 슬롯을 탭하면 이동/교체됩니다. <b>E</b> 키 또는 ✕ 로 닫기.</p>
+
+      <h3>조합 (2×2)</h3>
+      <div class="craftarea">
+        <div id="craftgrid" class="invslots craftgrid"></div>
+        <div class="craftarrow">→</div>
+        <div id="craftout" class="islot empty"></div>
+      </div>
+
+      <h3>보관함</h3>
+      <div id="invgrid" class="invslots"></div>
+
+      <h3>핫바</h3>
+      <div id="invhotbar" class="invslots"></div>
     </div>
   </div>
 
@@ -74,8 +89,8 @@
       </ul>
       <ul class="touch-only">
         <li><b>왼쪽 조이스틱</b> 이동 · <b>화면 드래그</b> 시점</li>
-        <li><b>⛏</b> 채굴(길게) · <b>▦</b> 설치 · <b>⤒</b> 점프</li>
-        <li><b>🎒</b> 인벤토리 · <b>✈</b> 비행 · <b>⬇</b> 하강 · <b>🍖</b> 먹기</li>
+        <li><b>화면 짧게 탭</b> 설치 · <b>꾹 누르기</b> 채굴 · <b>⤒</b> 점프</li>
+        <li><b>🎒</b> 인벤토리(조합) · <b>✈</b> 비행 · <b>⬇</b> 하강 · <b>🍖</b> 먹기</li>
         <li>핫바를 탭하면 슬롯 선택</li>
       </ul>
       <p class="warn">체력·허기·산소·낙하 데미지가 있는 서바이벌입니다.</p>

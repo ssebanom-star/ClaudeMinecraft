@@ -1,6 +1,6 @@
 // Survival state: health, hunger, oxygen, regeneration, fall/drown damage,
-// plus a simple inventory/hotbar model.
-import { BLOCKS, blockDef } from './blocks.js';
+// plus a hotbar + backpack inventory and a 2x2 crafting grid.
+import { blockDef } from './blocks.js';
 
 export class Survival {
   constructor() {
@@ -21,9 +21,11 @@ export class Survival {
     // hotbar of 9 slots; each {id, count} or null
     this.hotbar = new Array(9).fill(null);
     this.selected = 0;
+    // backpack storage, separate from the hotbar (2 rows of 9)
+    this.inventory = new Array(18).fill(null);
+    // 2x2 crafting input grid; output is derived via matchRecipe(), not stored
+    this.craftGrid = new Array(4).fill(null);
 
-    // give a starter creative-ish kit so all 50 blocks are reachable via inventory
-    this.allBlocks = BLOCKS.map((_, i) => i + 1);
     this._fillStarter();
   }
 
@@ -38,10 +40,6 @@ export class Survival {
     return s ? s.id : 0;
   }
 
-  setHotbar(slot, id) {
-    this.hotbar[slot] = id ? { id, count: 64 } : null;
-  }
-
   // returns true if a block could be consumed for placing
   consumeSelected() {
     const s = this.hotbar[this.selected];
@@ -51,14 +49,54 @@ export class Survival {
     return true;
   }
 
-  addItem(id) {
-    // stack into existing slot or first empty
-    for (const s of this.hotbar) {
-      if (s && s.id === id && s.count < 64) { s.count++; return; }
+  _storageArrays() {
+    return [this.hotbar, this.inventory];
+  }
+
+  canFit(id, count) {
+    let remaining = count;
+    for (const arr of this._storageArrays()) {
+      for (const s of arr) {
+        if (s && s.id === id) remaining -= Math.max(0, 64 - s.count);
+        if (remaining <= 0) return true;
+      }
     }
-    for (let i = 0; i < this.hotbar.length; i++) {
-      if (!this.hotbar[i]) { this.hotbar[i] = { id, count: 1 }; return; }
+    for (const arr of this._storageArrays()) {
+      for (const s of arr) {
+        if (!s) remaining -= 64;
+        if (remaining <= 0) return true;
+      }
     }
+    return remaining <= 0;
+  }
+
+  // Adds `count` of block `id` into the hotbar/inventory, stacking into
+  // existing slots first, then empty slots. Returns false (no change made)
+  // if there isn't room for all of it.
+  addItem(id, count = 1) {
+    if (!this.canFit(id, count)) return false;
+    let remaining = count;
+    for (const arr of this._storageArrays()) {
+      for (const s of arr) {
+        if (remaining <= 0) break;
+        if (s && s.id === id && s.count < 64) {
+          const take = Math.min(64 - s.count, remaining);
+          s.count += take;
+          remaining -= take;
+        }
+      }
+    }
+    for (const arr of this._storageArrays()) {
+      for (let i = 0; i < arr.length; i++) {
+        if (remaining <= 0) break;
+        if (!arr[i]) {
+          const take = Math.min(64, remaining);
+          arr[i] = { id, count: take };
+          remaining -= take;
+        }
+      }
+    }
+    return remaining <= 0;
   }
 
   damage(amount) {

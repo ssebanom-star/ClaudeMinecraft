@@ -79,19 +79,37 @@ canvas#game {
 }
 .invpanel {
   background: #2d2d36; color: #eee; padding: 20px 24px; border-radius: 10px;
-  width: min(820px, 92vw); max-height: 86vh; overflow: auto; border: 2px solid #111;
+  width: min(560px, 92vw); max-height: 86vh; overflow: auto; border: 2px solid #111;
 }
-.invpanel h2 { margin-bottom: 6px; }
-.invpanel .hint { font-size: 12px; color: #aaa; margin-bottom: 14px; }
-#invgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(82px, 1fr)); gap: 8px; }
-.invcell {
-  background: #3a3a44; border: 2px solid #1c1c22; border-radius: 6px; padding: 6px;
-  display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer;
-  transition: background 0.1s, transform 0.05s;
+.invhead { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.invhead h2 { margin: 0; }
+#invclose {
+  width: 32px; height: 32px; font-size: 16px; cursor: pointer;
+  background: #5a8a3a; color: #fff; border: 2px solid #2c4a1c; border-radius: 6px;
 }
-.invcell:hover { background: #4a4a58; transform: translateY(-1px); }
-.invcell img { width: 40px; height: 40px; image-rendering: pixelated; }
-.invcell span { font-size: 10px; text-align: center; color: #cfcfcf; line-height: 1.1; }
+#invclose:hover { background: #6aa047; }
+.invpanel h3 { font-size: 14px; color: #9fd07a; margin: 12px 0 6px; }
+.invpanel .hint { font-size: 12px; color: #aaa; margin-bottom: 8px; }
+
+.invslots { display: grid; grid-template-columns: repeat(9, 46px); gap: 5px; }
+.craftarea { display: flex; align-items: center; gap: 14px; }
+.craftgrid { grid-template-columns: repeat(2, 46px); }
+.craftarrow { font-size: 22px; color: #9fd07a; }
+
+.islot {
+  position: relative; width: 46px; height: 46px; background: rgba(120,120,120,0.25);
+  border: 2px solid #1c1c22; border-radius: 4px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.1s;
+}
+.islot:hover { background: rgba(120,120,120,0.4); }
+.islot.empty { cursor: default; }
+.islot.sel { border-color: #fff; box-shadow: 0 0 0 1px #fff; }
+.islot img { width: 38px; height: 38px; image-rendering: pixelated; pointer-events: none; }
+.islot .cnt {
+  position: absolute; bottom: 0; right: 3px; font-size: 11px; font-weight: bold;
+  color: #fff; text-shadow: 1px 1px 0 #000; pointer-events: none;
+}
 
 /* death */
 #death {
@@ -143,12 +161,10 @@ body.touch #crosshair { mix-blend-mode: normal; color: rgba(255,255,255,0.85); }
   will-change: transform;
 }
 
-#act {
-  position: fixed; right: 18px; bottom: 92px; width: 190px; height: 190px;
-}
+/* side cluster sits under the clock, well clear of the jump button */
 #side {
-  position: fixed; right: 18px; top: 50%; transform: translateY(-60%);
-  display: flex; flex-direction: column; gap: 10px;
+  position: fixed; right: 12px; top: 46px;
+  display: flex; flex-direction: column; gap: 8px;
 }
 
 .tbtn {
@@ -160,11 +176,11 @@ body.touch #crosshair { mix-blend-mode: normal; color: rgba(255,255,255,0.85); }
   touch-action: none; user-select: none;
 }
 .tbtn.down { background: rgba(255,255,255,0.45); }
-.tbtn.big { position: absolute; width: 74px; height: 74px; font-size: 30px; }
-.tbtn.mine  { left: 0;   bottom: 8px;  background: rgba(220,90,70,0.30); border-color: rgba(255,150,130,0.6); }
-.tbtn.place { right: 0;  bottom: 8px;  background: rgba(90,150,220,0.30); border-color: rgba(150,190,255,0.6); }
-.tbtn.jump  { left: 50%; top: 0; transform: translateX(-50%); background: rgba(120,200,120,0.30); border-color: rgba(170,255,170,0.6); }
-.tbtn.jump.down { transform: translateX(-50%); }
+.tbtn.small { width: 46px; height: 46px; font-size: 18px; }
+.tbtn.jump {
+  position: fixed; right: 18px; bottom: 92px; width: 74px; height: 74px; font-size: 30px;
+  background: rgba(120,200,120,0.30); border-color: rgba(170,255,170,0.6);
+}
 
 /* responsive: shrink HUD/hotbar on small screens */
 @media (max-width: 560px) {
@@ -174,9 +190,12 @@ body.touch #crosshair { mix-blend-mode: normal; color: rgba(255,255,255,0.85); }
   .slot { width: 38px; height: 38px; }
   .slot img { width: 30px; height: 30px; }
   .slot .num { font-size: 8px; }
-  #invgrid { grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 6px; }
-  .invcell img { width: 32px; height: 32px; }
-  .invcell span { font-size: 9px; }
+  .invslots { grid-template-columns: repeat(9, 34px); gap: 4px; }
+  .craftgrid { grid-template-columns: repeat(2, 34px); }
+  .islot { width: 34px; height: 34px; }
+  .islot img { width: 28px; height: 28px; }
   .helppanel { padding: 20px; }
   .helppanel h1 { font-size: 24px; }
+  .tbtn.small { width: 40px; height: 40px; font-size: 16px; }
+  .tbtn.jump { width: 64px; height: 64px; font-size: 26px; }
 }
