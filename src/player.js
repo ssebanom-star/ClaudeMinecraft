@@ -107,10 +107,10 @@ export class Player {
     str += this.joyStr;
 
     // Movement is relative to where the camera looks. Forward matches the
-    // horizontal look direction (sin, cos); right (strafe) is that turned 90°.
+    // horizontal look direction (sin, cos); right (strafe) = forward x up.
     const sin = Math.sin(this.yaw), cos = Math.cos(this.yaw);
-    let mx = fwd * sin + str * cos;
-    let mz = fwd * cos - str * sin;
+    let mx = fwd * sin - str * cos;
+    let mz = fwd * cos + str * sin;
     const len = Math.hypot(mx, mz);
     if (len > 1) { mx /= len; mz /= len; }
 
@@ -129,7 +129,11 @@ export class Player {
       this.vel.z = mz * speed;
       this.vel.y -= 8 * dt; // buoyant gravity
       this.vel.y *= 0.9;
-      if (this.keys['Space']) this.vel.y = 3.0; // swim up
+      if (this.keys['Space']) {
+        // standing on the bottom: a real jump clears the surface; otherwise swim up
+        this.vel.y = this.onGround ? 8.4 : 3.0;
+        this.onGround = false;
+      }
       this.vel.y = Math.max(this.vel.y, -3);
     } else {
       this.vel.x = mx * speed;
