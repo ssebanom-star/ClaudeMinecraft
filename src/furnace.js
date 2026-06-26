@@ -42,6 +42,7 @@ export class FurnaceState {
     this.burn = 0;     // seconds of fuel remaining
     this.burnMax = 1;  // duration of the current fuel unit (for flame meter)
     this.cook = 0;     // seconds progressed on the current item
+    this.cookingId = null; // input id the current cook progress belongs to
   }
 
   // Can the current input be smelted into the output right now?
@@ -60,6 +61,13 @@ export class FurnaceState {
   }
 
   tick(dt) {
+    // reset progress if the input slot's item changed since we started cooking it
+    const curId = this.input[0] ? this.input[0].id : null;
+    if (curId !== this.cookingId) {
+      this.cook = 0;
+      this.cookingId = curId;
+    }
+
     const can = this._canSmelt();
 
     // keep the fire going
@@ -78,14 +86,16 @@ export class FurnaceState {
 
     if (this.burn > 0 && can) {
       this.cook += dt;
-      if (this.cook >= COOK_TIME) {
+      // a `while` (not `if`) so a large dt (e.g. after a frame hitch) drains
+      // all earned progress instead of completing at most one item.
+      while (this.cook >= COOK_TIME && this._canSmelt()) {
         this.cook -= COOK_TIME;
         const inp = this.input[0];
         const res = SMELT[inp.id];
         if (this.output[0]) this.output[0].count += res.count;
         else this.output[0] = { id: res.id, count: res.count };
         inp.count--;
-        if (inp.count <= 0) this.input[0] = null;
+        if (inp.count <= 0) { this.input[0] = null; this.cookingId = null; }
       }
     } else {
       // lose progress if we can't currently smelt

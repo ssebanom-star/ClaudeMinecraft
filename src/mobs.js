@@ -150,8 +150,9 @@ class Zombie {
     if (dist <= ATTACK_RANGE && dyEye < 2 && this.cooldown <= 0 && !survival.dead) {
       survival.hurt(ATTACK_DMG);
       this.cooldown = ATTACK_CD;
-      player.vel.x += nx * 4.5;
-      player.vel.z += nz * 4.5;
+      const inv = dist > 0.001 ? 1 / dist : 0;
+      player.vel.x += dx * inv * 4.5;
+      player.vel.z += dz * inv * 4.5;
       player.vel.y = Math.max(player.vel.y, 3.5);
     }
 
@@ -195,6 +196,11 @@ class Zombie {
     set(this.mat.shirt, SHIRT);
     set(this.mat.pants, PANTS);
   }
+
+  dispose() {
+    this.group.traverse((o) => { if (o.geometry) o.geometry.dispose(); });
+    for (const k in this.mat) this.mat[k].dispose();
+  }
 }
 
 export class MobManager {
@@ -233,6 +239,7 @@ export class MobManager {
       const far = Math.hypot(player.pos.x - m.pos.x, player.pos.z - m.pos.z) > DESPAWN_DIST;
       if (m.health <= 0 || m.pos.y < -8 || far) {
         this.scene.remove(m.group);
+        m.dispose();
         this.mobs.splice(i, 1);
       }
     }

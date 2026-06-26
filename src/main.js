@@ -147,13 +147,15 @@ function onSlotClick(arr, idx, opts = {}) {
   } else {
     const src = pickedSlot.arr[pickedSlot.idx];
     const dst = arr[idx];
-    const destOK = !opts.accept || (src && opts.accept(src));
+    // opts.noInsert is a destination-only guard (e.g. furnace output): nothing
+    // may ever be placed there, but that must not block extracting from it.
+    const destOK = opts.noInsert ? false : (!opts.accept || (src && opts.accept(src)));
     if (destOK && src) {
       if (!dst) {
         arr[idx] = src;
         pickedSlot.arr[pickedSlot.idx] = null;
         pickedSlot = null;
-      } else if (dst.id === src.id) {
+      } else if (dst.id === src.id && !opts.single) {
         const move = Math.min(64 - dst.count, src.count);
         dst.count += move;
         src.count -= move;
@@ -247,7 +249,10 @@ function renderInventoryScreen() {
   armorSlotsEl.innerHTML = '';
   survival.armorSlots.forEach((_, i) =>
     armorSlotsEl.appendChild(
-      makeSlotEl(survival.armorSlots, i, { accept: (it) => armorSlotOf(it.id) === ARMOR_SLOTS[i] })
+      makeSlotEl(survival.armorSlots, i, {
+        accept: (it) => armorSlotOf(it.id) === ARMOR_SLOTS[i],
+        single: true,
+      })
     )
   );
 
@@ -262,13 +267,25 @@ let lastFurnSig = '';
 
 function fkey(x, y, z) { return x + ',' + y + ',' + z; }
 
+// Returns any ore/fuel/smelted items still sitting in a furnace before it's
+// removed (mined or exploded), so breaking it doesn't destroy its contents.
+function drainFurnace(st) {
+  if (!st) return;
+  for (const slot of [st.input, st.fuel, st.output]) {
+    const it = slot[0];
+    if (!it) continue;
+    if (!survival.addItem(it.id, it.count)) toast('인벤토리가 가득 찼습니다');
+    slot[0] = null;
+  }
+}
+
 function renderFurnaceScreen() {
   if (!currentFurnace) return;
   const f = currentFurnace;
   // re-query by id: the previous slot nodes get replaced each render
   document.getElementById('furn-input').replaceWith(makeFurnSlot(f.input, 0, 'furn-input'));
   document.getElementById('furn-fuel').replaceWith(makeFurnSlot(f.fuel, 0, 'furn-fuel'));
-  document.getElementById('furn-output').replaceWith(makeFurnSlot(f.output, 0, 'furn-output', { accept: () => false }));
+  document.getElementById('furn-output').replaceWith(makeFurnSlot(f.output, 0, 'furn-output', { noInsert: true }));
   fillGrid(furnInvGrid, survival.inventory);
   fillGrid(furnHotbarEl, survival.hotbar);
   updateFurnaceMeters();
@@ -513,7 +530,11 @@ function updateMining(dt) {
     if (ratio >= 1) {
       world.setBlock(hit.x, hit.y, hit.z, 0);
       rebuildAround(hit.x, hit.z);
-      if (hit.id === ID.Furnace) furnaceStates.delete(fkey(hit.x, hit.y, hit.z));
+      if (hit.id === ID.Furnace) {
+        const k = fkey(hit.x, hit.y, hit.z);
+        drainFurnace(furnaceStates.get(k));
+        furnaceStates.delete(k);
+      }
       if (!survival.addItem(def.drop ?? hit.id)) toast('인벤토리가 가득 찼습니다');
       survival.addExhaustion(0.05);
       breakProgress = 0;
@@ -578,7 +599,11 @@ function explode(cx, cy, cz, R) {
         if (id === ID.TNT) { primeTNT(bx, by, bz, 0.15 + Math.random() * 0.15); continue; }
         const def = blockDef(id);
         if (!def || def.hardness === Infinity || def.liquid) continue;
-        if (id === ID.Furnace) furnaceStates.delete(fkey(bx, by, bz));
+        if (id === ID.Furnace) {
+          const k = fkey(bx, by, bz);
+          drainFurnace(furnaceStates.get(k));
+          furnaceStates.delete(k);
+        }
         world.setBlock(bx, by, bz, 0);
       }
   rebuildAround(bx0, bz0);
@@ -664,17 +689,19 @@ let last = performance.now();
 let hudTimer = 0;
 
 function loop(now) {
-  const dt = (now - last) / 1000;
+  // clamp like player/mob updates already do, so a backgrounded/refocused tab
+  // (or any frame hitch) can't fast-forward furnaces/TNT/day-night in one jump
+  const dt = Math.min((now - last) / 1000, 0.05);
   last = now;
 
   updateDayNight(dt);
+  updatePrimed(dt); // ticks even while a menu is open or the player is dead, like furnaces
 
   const paused = survival.dead || menuOpen();
   if (!paused) {
     player.update(dt);
     updateMining(dt);
     mobs.update(dt, { player, survival, isNight, brightness });
-    updatePrimed(dt);
 
     const headInWater = isLiquid(
       world.getBlock(Math.floor(player.pos.x), Math.floor(player.pos.y + 1.6), Math.floor(player.pos.z))
@@ -694,8 +721,12 @@ function loop(now) {
     }
   }
 
-  // furnaces smelt in the background, even with a menu open
-  for (const f of furnaceStates.values()) f.tick(dt);
+  // furnaces smelt in the background, even with a menu open; prune fully idle
+  // ones (no items, unlit) so opening empty furnaces doesn't leak Map entries
+  for (const [k, f] of furnaceStates) {
+    f.tick(dt);
+    if (f !== currentFurnace && !f.lit && !f.input[0] && !f.fuel[0] && !f.output[0]) furnaceStates.delete(k);
+  }
   if (furnaceOpen && currentFurnace) {
     updateFurnaceMeters();
     const sig = furnSig(currentFurnace);
